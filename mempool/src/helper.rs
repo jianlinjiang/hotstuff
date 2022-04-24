@@ -20,6 +20,7 @@ pub struct Helper {
     rx_request: Receiver<(Vec<Digest>, PublicKey)>,
     /// A network sender to send the batches to the other mempools.
     network: SimpleSender,
+    validator_id: String
 }
 
 impl Helper {
@@ -27,6 +28,7 @@ impl Helper {
         committee: Committee,
         store: Store,
         rx_request: Receiver<(Vec<Digest>, PublicKey)>,
+        validator_id: String
     ) {
         tokio::spawn(async move {
             Self {
@@ -34,6 +36,7 @@ impl Helper {
                 store,
                 rx_request,
                 network: SimpleSender::new(),
+                validator_id
             }
             .run()
             .await;
@@ -56,7 +59,13 @@ impl Helper {
             // Reply to the request (the best we can).
             for digest in digests {
                 match self.store.read(digest.to_vec()).await {
-                    Ok(Some(data)) => self.network.send(address, Bytes::from(data)).await,
+                    Ok(Some(data)) => {
+                        let prefix = self.validator_id.clone().into_bytes();
+                        let mut prefix_msg : Vec<u8> = Vec::new();
+                        prefix_msg.extend(prefix);
+                        prefix_msg.extend(data);
+                        self.network.send(address, Bytes::from(prefix_msg)).await
+                    },
                     Ok(None) => (),
                     Err(e) => error!("{}", e),
                 }

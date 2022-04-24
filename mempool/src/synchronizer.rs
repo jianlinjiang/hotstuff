@@ -44,6 +44,8 @@ pub struct Synchronizer {
     /// processing will resume when we get the missing batches in the store or we no longer need them.
     /// It also keeps the round number and a timestamp (`u128`) of each request we sent.
     pending: HashMap<Digest, (Round, Sender<()>, u128)>,
+    /// validator id.
+    validator_id: String
 }
 
 impl Synchronizer {
@@ -56,6 +58,7 @@ impl Synchronizer {
         sync_retry_delay: u64,
         sync_retry_nodes: usize,
         rx_message: Receiver<ConsensusMempoolMessage>,
+        validator_id: String
     ) {
         tokio::spawn(async move {
             Self {
@@ -69,6 +72,7 @@ impl Synchronizer {
                 network: SimpleSender::new(),
                 round: Round::default(),
                 pending: HashMap::new(),
+                validator_id
             }
             .run()
             .await;
@@ -138,7 +142,11 @@ impl Synchronizer {
                         };
                         let message = MempoolMessage::BatchRequest(missing, self.name);
                         let serialized = bincode::serialize(&message).expect("Failed to serialize our own message");
-                        self.network.send(address, Bytes::from(serialized)).await;
+                        let prefix = self.validator_id.clone().into_bytes();
+                        let mut prefix_msg : Vec<u8> = Vec::new();
+                        prefix_msg.extend(prefix);
+                        prefix_msg.extend(serialized);
+                        self.network.send(address, Bytes::from(prefix_msg)).await;
                     },
                     ConsensusMempoolMessage::Cleanup(round) => {
                         // Keep track of the consensus' round number.
@@ -196,8 +204,12 @@ impl Synchronizer {
                             .collect();
                         let message = MempoolMessage::BatchRequest(retry, self.name);
                         let serialized = bincode::serialize(&message).expect("Failed to serialize our own message");
+                        let prefix = self.validator_id.clone().into_bytes();
+                        let mut prefix_msg : Vec<u8> = Vec::new();
+                        prefix_msg.extend(prefix);
+                        prefix_msg.extend(serialized);
                         self.network
-                            .lucky_broadcast(addresses, Bytes::from(serialized), self.sync_retry_nodes)
+                            .lucky_broadcast(addresses, Bytes::from(prefix_msg), self.sync_retry_nodes)
                             .await;
                     }
 

@@ -4,19 +4,21 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::stream::SplitSink;
 use futures::stream::StreamExt as _;
-use log::{debug, info, warn};
+use log::{debug, info, warn, error};
 use std::error::Error;
 use std::net::SocketAddr;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
-
+use std::collections::HashMap;
+use std::sync::{Arc};
+use tokio::sync::{RwLock};
 #[cfg(test)]
 #[path = "tests/receiver_tests.rs"]
 pub mod receiver_tests;
 
 /// Convenient alias for the writer end of the TCP channel.
 pub type Writer = SplitSink<Framed<TcpStream, LengthDelimitedCodec>, Bytes>;
-
+pub const PREFIX_LEN: usize =  88;
 #[async_trait]
 pub trait MessageHandler: Clone + Send + Sync + 'static {
     /// Defines how to handle an incoming message. A typical usage is to define a `MessageHandler` with a
@@ -32,14 +34,14 @@ pub struct Receiver<Handler: MessageHandler> {
     /// Address to listen to.
     address: SocketAddr,
     /// Struct responsible to define how to handle received messages.
-    handler: Handler,
+    handler_map: Arc<RwLock<HashMap<String, Handler>>>
 }
 
 impl<Handler: MessageHandler> Receiver<Handler> {
     /// Spawn a new network receiver handling connections from any incoming peer.
-    pub fn spawn(address: SocketAddr, handler: Handler) {
+    pub fn spawn(address: SocketAddr, handler_map: Arc<RwLock<HashMap<String, Handler>>>) {
         tokio::spawn(async move {
-            Self { address, handler }.run().await;
+            Self { address, handler_map }.run().await;
         });
     }
 
@@ -59,22 +61,33 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                 }
             };
             info!("Incoming connection established with {}", peer);
-            Self::spawn_runner(socket, peer, self.handler.clone()).await;
+            Self::spawn_runner(socket, peer, Arc::clone(&self.handler_map)).await;
         }
     }
 
-    /// Spawn a new runner to handle a specific TCP connection. It receives messages and process them
-    /// using the provided handler.
-    async fn spawn_runner(socket: TcpStream, peer: SocketAddr, handler: Handler) {
+    async fn spawn_runner(socket: TcpStream, peer: SocketAddr, handler_map: Arc<RwLock<HashMap<String, Handler>>>) {
+        let msg_prefix_len: usize = PREFIX_LEN;
         tokio::spawn(async move {
             let transport = Framed::new(socket, LengthDelimitedCodec::new());
             let (mut writer, mut reader) = transport.split();
             while let Some(frame) = reader.next().await {
                 match frame.map_err(|e| NetworkError::FailedToReceiveMessage(peer, e)) {
                     Ok(message) => {
-                        if let Err(e) = handler.dispatch(&mut writer, message.freeze()).await {
-                            warn!("{}", e);
-                            return;
+                        // get first msg_prefix_len
+                        let prefix = String::from_utf8(message[0..msg_prefix_len-1].to_vec()).unwrap();
+                        let handlers = handler_map.read().await;
+                        match handlers.get(&prefix) {
+                            Some(handler) => {
+                                // trunctate the prefix
+                                let mut mut_msg = message;
+                                if let Err(e) = handler.dispatch(&mut writer, mut_msg.split_to(msg_prefix_len).freeze()).await {
+                                    warn!("{}", e);
+                                    return;
+                                }
+                            },
+                            None => {
+                                error!("there is no handler for this prefix, some error happen!");
+                            } 
                         }
                     }
                     Err(e) => {

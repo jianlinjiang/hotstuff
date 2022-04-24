@@ -55,6 +55,8 @@ pub struct Authority {
     pub transactions_address: SocketAddr,
     /// Address to receive messages from other nodes.
     pub mempool_address: SocketAddr,
+    /// Address to receive messages from validator
+    pub dvf_address: SocketAddr
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -64,15 +66,16 @@ pub struct Committee {
 }
 
 impl Committee {
-    pub fn new(info: Vec<(PublicKey, Stake, SocketAddr, SocketAddr)>, epoch: EpochNumber) -> Self {
+    pub fn new(info: Vec<(PublicKey, Stake, SocketAddr, SocketAddr, SocketAddr)>, epoch: EpochNumber) -> Self {
         Self {
             authorities: info
                 .into_iter()
-                .map(|(name, stake, transactions_address, mempool_address)| {
+                .map(|(name, stake, transactions_address, mempool_address, dvf_address)| {
                     let authority = Authority {
                         stake,
                         transactions_address,
                         mempool_address,
+                        dvf_address
                     };
                     (name, authority)
                 })
@@ -111,5 +114,10 @@ impl Committee {
             .filter(|(name, _)| name != &myself)
             .map(|(name, x)| (*name, x.mempool_address))
             .collect()
+    }
+
+    /// Returns the ssv address of a spefic node
+    pub fn dvf_address(&self, name: &PublicKey) -> Option<SocketAddr> {
+        self.authorities.get(name).map(|x| x.dvf_address)
     }
 }

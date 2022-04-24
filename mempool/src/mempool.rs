@@ -9,12 +9,15 @@ use bytes::Bytes;
 use crypto::{Digest, PublicKey};
 use futures::sink::SinkExt as _;
 use log::{info, warn};
-use network::{MessageHandler, Receiver as NetworkReceiver, Writer};
+use network::{MessageHandler, Writer};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use store::Store;
+use std::sync::Arc;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-
+use tokio::sync::RwLock;
+use std::collections::HashMap;
+use futures::executor::block_on;
 #[cfg(test)]
 #[path = "tests/mempool_tests.rs"]
 pub mod mempool_tests;
@@ -52,6 +55,8 @@ pub struct Mempool {
     store: Store,
     /// Send messages to consensus.
     tx_consensus: Sender<Digest>,
+    /// Validator id.
+    validator_id: String
 }
 
 impl Mempool {
@@ -62,6 +67,9 @@ impl Mempool {
         store: Store,
         rx_consensus: Receiver<ConsensusMempoolMessage>,
         tx_consensus: Sender<Digest>,
+        validator_id: String,
+        tx_handler_map : Arc<RwLock<HashMap<String, TxReceiverHandler>>>,
+        mempool_handler_map: Arc<RwLock<HashMap<String, MempoolReceiverHandler>>>
     ) {
         // NOTE: This log entry is used to compute performance.
         parameters.log();
@@ -73,12 +81,14 @@ impl Mempool {
             parameters,
             store,
             tx_consensus,
+            validator_id,
         };
 
         // Spawn all mempool tasks.
         mempool.handle_consensus_messages(rx_consensus);
-        mempool.handle_clients_transactions();
-        mempool.handle_mempool_messages();
+        
+        block_on(mempool.handle_clients_transactions(Arc::clone(&tx_handler_map)));
+        block_on(mempool.handle_mempool_messages(Arc::clone(&mempool_handler_map)));
 
         info!(
             "Mempool successfully booted on {}",
@@ -102,25 +112,29 @@ impl Mempool {
             self.parameters.sync_retry_delay,
             self.parameters.sync_retry_nodes,
             /* rx_message */ rx_consensus,
+            self.validator_id.clone()
         );
     }
 
     /// Spawn all tasks responsible to handle clients transactions.
-    fn handle_clients_transactions(&self) {
+    async fn handle_clients_transactions(&self, tx_handler_map: Arc<RwLock<HashMap<String, TxReceiverHandler>>>) {
         let (tx_batch_maker, rx_batch_maker) = channel(CHANNEL_CAPACITY);
         let (tx_quorum_waiter, rx_quorum_waiter) = channel(CHANNEL_CAPACITY);
         let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
 
         // We first receive clients' transactions from the network.
-        let mut address = self
-            .committee
-            .transactions_address(&self.name)
-            .expect("Our public key is not in the committee");
-        address.set_ip("0.0.0.0".parse().unwrap());
-        NetworkReceiver::spawn(
-            address,
-            /* handler */ TxReceiverHandler { tx_batch_maker },
-        );
+        // let mut address = self
+        //     .committee
+        //     .transactions_address(&self.name)
+        //     .expect("Our public key is not in the committee");
+        // address.set_ip("0.0.0.0".parse().unwrap());
+        let validator_id : String = self.validator_id.clone();
+        let mut handler_map = tx_handler_map.write().await;
+        handler_map.insert(validator_id.clone(), TxReceiverHandler{tx_batch_maker});
+        // NetworkReceiver::spawn(
+        //     address,
+        //     /* handler */ TxReceiverHandler { tx_batch_maker },
+        // );
 
         // The transactions are sent to the `BatchMaker` that assembles them into batches. It then broadcasts
         // (in a reliable manner) the batches to all other mempools that share the same `id` as us. Finally,
@@ -132,6 +146,7 @@ impl Mempool {
             /* tx_message */ tx_quorum_waiter,
             /* mempool_addresses */
             self.committee.broadcast_addresses(&self.name),
+            self.validator_id.clone()
         );
 
         // The `QuorumWaiter` waits for 2f authorities to acknowledge reception of the batch. It then forwards
@@ -150,34 +165,39 @@ impl Mempool {
             /* tx_digest */ self.tx_consensus.clone(),
         );
 
-        info!("Mempool listening to client transactions on {}", address);
+        // info!("Mempool listening to client transactions on {}", address);
     }
 
     /// Spawn all tasks responsible to handle messages from other mempools.
-    fn handle_mempool_messages(&self) {
+    async fn handle_mempool_messages(&self, mempool_handler_map: Arc<RwLock<HashMap<String, MempoolReceiverHandler>>>) {
         let (tx_helper, rx_helper) = channel(CHANNEL_CAPACITY);
         let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
 
         // Receive incoming messages from other mempools.
-        let mut address = self
-            .committee
-            .mempool_address(&self.name)
-            .expect("Our public key is not in the committee");
-        address.set_ip("0.0.0.0".parse().unwrap());
-        NetworkReceiver::spawn(
-            address,
-            /* handler */
-            MempoolReceiverHandler {
-                tx_helper,
-                tx_processor,
-            },
-        );
+        // let mut address = self
+        //     .committee
+        //     .mempool_address(&self.name)
+        //     .expect("Our public key is not in the committee");
+        // address.set_ip("0.0.0.0".parse().unwrap());
+        let validator_id = self.validator_id.clone();
+        let mut handler_map = mempool_handler_map.write().await;
+        handler_map.insert(validator_id.clone(), MempoolReceiverHandler{tx_helper, tx_processor});
+        // NetworkReceiver::spawn(
+        //     address,
+        //     /* handler */
+        //     validator_id,
+        //     MempoolReceiverHandler {
+        //         tx_helper,
+        //         tx_processor,
+        //     },
+        // );
 
         // The `Helper` is dedicated to reply to batch requests from other mempools.
         Helper::spawn(
             self.committee.clone(),
             self.store.clone(),
             /* rx_request */ rx_helper,
+            self.validator_id.clone()
         );
 
         // This `Processor` hashes and stores the batches we receive from the other mempools. It then forwards the
@@ -188,13 +208,13 @@ impl Mempool {
             /* tx_digest */ self.tx_consensus.clone(),
         );
 
-        info!("Mempool listening to mempool messages on {}", address);
+        // info!("Mempool listening to mempool messages on {}", address);
     }
 }
 
 /// Defines how the network receiver handles incoming transactions.
 #[derive(Clone)]
-struct TxReceiverHandler {
+pub struct TxReceiverHandler {
     tx_batch_maker: Sender<Transaction>,
 }
 
@@ -215,7 +235,7 @@ impl MessageHandler for TxReceiverHandler {
 
 /// Defines how the network receiver handles incoming mempool messages.
 #[derive(Clone)]
-struct MempoolReceiverHandler {
+pub struct MempoolReceiverHandler {
     tx_helper: Sender<(Vec<Digest>, PublicKey)>,
     tx_processor: Sender<SerializedBatchMessage>,
 }

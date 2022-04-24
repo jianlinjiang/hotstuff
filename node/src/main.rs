@@ -1,6 +1,6 @@
 mod config;
 mod node;
-
+mod dvfcore;
 use crate::config::Export as _;
 use crate::config::{Committee, Secret};
 use crate::node::Node;
@@ -8,7 +8,7 @@ use clap::{crate_name, crate_version, App, AppSettings, SubCommand};
 use consensus::Committee as ConsensusCommittee;
 use env_logger::Env;
 use futures::future::join_all;
-use log::error;
+use log::{error, info};
 use mempool::Committee as MempoolCommittee;
 use std::fs;
 use tokio::task::JoinHandle;
@@ -29,6 +29,10 @@ async fn main() {
                 .about("Runs a single node")
                 .args_from_usage("--keys=<FILE> 'The file containing the node keys'")
                 .args_from_usage("--committee=<FILE> 'The file containing committee information'")
+                .args_from_usage("--tx_address=<STR> 'The address of tx_receiver'")
+                .args_from_usage("--mempool_address=<STR> 'The address of mempool_receiver'")
+                .args_from_usage("--consensus_address=<STR> 'The address of consensus_receiver'")
+                .args_from_usage("--dvfcore_address=<STR> 'The address of dvfcore_receiver'")
                 .args_from_usage("--parameters=[FILE] 'The file containing the node parameters'")
                 .args_from_usage("--store=<PATH> 'The path where to create the data store'"),
         )
@@ -61,16 +65,20 @@ async fn main() {
         }
         ("run", Some(subm)) => {
             let key_file = subm.value_of("keys").unwrap();
-            let committee_file = subm.value_of("committee").unwrap();
+            let tx_address = subm.value_of("tx_address").unwrap();
+            let mempool_address = subm.value_of("mempool_address").unwrap();
+            let consensus_address = subm.value_of("consensus_address").unwrap();
+            let dvfcore_address = subm.value_of("dvfcore_address").unwrap();
             let parameters_file = subm.value_of("parameters");
             let store_path = subm.value_of("store").unwrap();
-            match Node::new(committee_file, key_file, store_path, parameters_file).await {
-                Ok(mut node) => {
-                    tokio::spawn(async move {
-                        node.analyze_block().await;
-                    })
-                    .await
-                    .expect("Failed to analyze committed blocks");
+            match Node::new(tx_address, mempool_address, consensus_address, dvfcore_address, key_file, store_path, parameters_file).await {
+                Ok(_) => {
+                    // tokio::spawn(async move {
+                    //     node.analyze_block().await;
+                    // })
+                    // .await
+                    // .expect("Failed to analyze committed blocks");
+                    info!("start the dvf node success");
                 }
                 Err(e) => error!("{}", e),
             }
@@ -104,7 +112,8 @@ fn deploy_testbed(nodes: usize) -> Result<Vec<JoinHandle<()>>, Box<dyn std::erro
                 let stake = 1;
                 let front = format!("127.0.0.1:{}", 25_000 + i).parse().unwrap();
                 let mempool = format!("127.0.0.1:{}", 25_100 + i).parse().unwrap();
-                (name, stake, front, mempool)
+                let dvf = format!("127.0.0.1:{}", 25_300 + i).parse().unwrap();
+                (name, stake, front, mempool, dvf)
             })
             .collect(),
         epoch,
@@ -123,11 +132,12 @@ fn deploy_testbed(nodes: usize) -> Result<Vec<JoinHandle<()>>, Box<dyn std::erro
     );
     let committee_file = "committee.json";
     let _ = fs::remove_file(committee_file);
-    Committee {
+    let committee = Committee {
         mempool: mempool_committee,
         consensus: consensus_committee,
-    }
-    .write(committee_file)?;
+    };
+    
+    committee.write(committee_file)?;
 
     // Write the key files and spawn all nodes.
     keys.iter()
@@ -139,12 +149,26 @@ fn deploy_testbed(nodes: usize) -> Result<Vec<JoinHandle<()>>, Box<dyn std::erro
 
             let store_path = format!("db_{}", i);
             let _ = fs::remove_dir_all(&store_path);
+            let name = keypair.name.clone();
+            let mem_address = committee.mempool
+            .mempool_address(&name)
+            .expect("Our public key is not in the committee");
+
+            let tx_address = committee.mempool.transactions_address(&name)
+            .expect("Our public key is not in the committee");
+
+            let consensus_address = committee.consensus.address(&name)
+            .expect("Our public key is not in the committee");
+
+            let dvf_address = committee.mempool.dvf_address(&name)
+            .expect("Our public key is not in the committee");
 
             Ok(tokio::spawn(async move {
-                match Node::new(committee_file, &key_file, &store_path, None).await {
-                    Ok(mut node) => {
+                match Node::new(&tx_address.to_string(), &mem_address.to_string(), &consensus_address.to_string(), &dvf_address.to_string(), &key_file, &store_path, None).await {
+                    Ok(_) => {
                         // Sink the commit channel.
-                        while node.commit.recv().await.is_some() {}
+                        // while node.commit.recv().await.is_some() {}
+                        info!("start dvf node {} success", name);
                     }
                     Err(e) => error!("{}", e),
                 }

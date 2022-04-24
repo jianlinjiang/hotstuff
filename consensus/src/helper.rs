@@ -21,16 +21,18 @@ pub struct Helper {
     rx_requests: Receiver<(Digest, PublicKey)>,
     /// A network sender to reply to the sync requests.
     network: SimpleSender,
+    validator_id: String
 }
 
 impl Helper {
-    pub fn spawn(committee: Committee, store: Store, rx_requests: Receiver<(Digest, PublicKey)>) {
+    pub fn spawn(committee: Committee, store: Store, rx_requests: Receiver<(Digest, PublicKey)>, validator_id: String) {
         tokio::spawn(async move {
             Self {
                 committee,
                 store,
                 rx_requests,
                 network: SimpleSender::new(),
+                validator_id
             }
             .run()
             .await;
@@ -61,7 +63,12 @@ impl Helper {
                     bincode::deserialize(&bytes).expect("Failed to deserialize our own block");
                 let message = bincode::serialize(&ConsensusMessage::Propose(block))
                     .expect("Failed to serialize block");
-                self.network.send(address, Bytes::from(message)).await;
+
+                let prefix = self.validator_id.clone().into_bytes();
+                let mut prefix_msg : Vec<u8> = Vec::new();
+                prefix_msg.extend(prefix);
+                prefix_msg.extend(message);    
+                self.network.send(address, Bytes::from(prefix_msg)).await;
             }
         }
     }

@@ -42,6 +42,7 @@ pub struct Core {
     timer: Timer,
     aggregator: Aggregator,
     network: SimpleSender,
+    validator_id: String
 }
 
 impl Core {
@@ -59,6 +60,7 @@ impl Core {
         rx_loopback: Receiver<Block>,
         tx_proposer: Sender<ProposerMessage>,
         tx_commit: Sender<Block>,
+        validator_id : String
     ) {
         tokio::spawn(async move {
             Self {
@@ -80,6 +82,7 @@ impl Core {
                 timer: Timer::new(timeout_delay),
                 aggregator: Aggregator::new(committee),
                 network: SimpleSender::new(),
+                validator_id
             }
             .run()
             .await
@@ -191,8 +194,12 @@ impl Core {
             .collect();
         let message = bincode::serialize(&ConsensusMessage::Timeout(timeout.clone()))
             .expect("Failed to serialize timeout message");
+        let prefix = self.validator_id.clone().into_bytes();
+        let mut prefix_msg : Vec<u8> = Vec::new();
+        prefix_msg.extend(prefix);
+        prefix_msg.extend(message);
         self.network
-            .broadcast(addresses, Bytes::from(message))
+            .broadcast(addresses, Bytes::from(prefix_msg))
             .await;
 
         // Process our message.
@@ -253,8 +260,12 @@ impl Core {
                 .collect();
             let message = bincode::serialize(&ConsensusMessage::TC(tc.clone()))
                 .expect("Failed to serialize timeout certificate");
+            let prefix = self.validator_id.clone().into_bytes();
+            let mut prefix_msg : Vec<u8> = Vec::new();
+            prefix_msg.extend(prefix);
+            prefix_msg.extend(message);
             self.network
-                .broadcast(addresses, Bytes::from(message))
+                .broadcast(addresses, Bytes::from(prefix_msg))
                 .await;
 
             // Make a new block if we are the next leader.
@@ -356,7 +367,11 @@ impl Core {
                     .expect("The next leader is not in the committee");
                 let message = bincode::serialize(&ConsensusMessage::Vote(vote))
                     .expect("Failed to serialize vote");
-                self.network.send(address, Bytes::from(message)).await;
+                let prefix = self.validator_id.clone().into_bytes();
+                let mut prefix_msg : Vec<u8> = Vec::new();
+                prefix_msg.extend(prefix);
+                prefix_msg.extend(message);
+                self.network.send(address, Bytes::from(prefix_msg)).await;
             }
         }
         Ok(())

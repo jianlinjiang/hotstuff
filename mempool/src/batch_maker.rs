@@ -40,6 +40,7 @@ pub struct BatchMaker {
     current_batch_size: usize,
     /// A network sender to broadcast the batches to the other mempools.
     network: ReliableSender,
+    validator_id: String
 }
 
 impl BatchMaker {
@@ -49,6 +50,7 @@ impl BatchMaker {
         rx_transaction: Receiver<Transaction>,
         tx_message: Sender<QuorumWaiterMessage>,
         mempool_addresses: Vec<(PublicKey, SocketAddr)>,
+        validator_id: String
     ) {
         tokio::spawn(async move {
             Self {
@@ -60,6 +62,7 @@ impl BatchMaker {
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
+                validator_id
             }
             .run()
             .await;
@@ -141,7 +144,11 @@ impl BatchMaker {
 
         // Broadcast the batch through the network.
         let (names, addresses): (Vec<_>, _) = self.mempool_addresses.iter().cloned().unzip();
-        let bytes = Bytes::from(serialized.clone());
+        let prefix = self.validator_id.clone().into_bytes();
+        let mut prefix_msg : Vec<u8> = Vec::new();
+        prefix_msg.extend(prefix);
+        prefix_msg.extend(serialized.clone());
+        let bytes = Bytes::from(prefix_msg.clone());
         let handlers = self.network.broadcast(addresses, bytes).await;
 
         // Send the batch through the deliver channel for further processing.
