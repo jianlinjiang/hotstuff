@@ -88,7 +88,7 @@ impl Node {
         info!("DvfCore listening to dvf messages on {}", dvfcore_network_address);
 
         info!("Node {} successfully booted", name);
-        Ok(Self { name, secret_key, base_store_path, rx_dvfinfo, tx_handler_map, mempool_handler_map, consensus_handler_map})
+        Ok(Self { name, secret_key, base_store_path, rx_dvfinfo, tx_handler_map: Arc::clone(&tx_handler_map), mempool_handler_map: Arc::clone(&mempool_handler_map), consensus_handler_map: Arc::clone(&consensus_handler_map)})
     }
 
     pub fn print_key_file(filename: &str) -> Result<(), ConfigError> {
@@ -98,6 +98,7 @@ impl Node {
     pub async fn process_dvfinfo(&mut self) {
         while let Some(dvfinfo) = self.rx_dvfinfo.recv().await {
             // This is where we can further process committed block.
+            info!("received validator {}", dvfinfo.validator_id);
             match DvfCore::new(
                 dvfinfo.committee,
                 self.name.clone(),

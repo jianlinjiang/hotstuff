@@ -62,7 +62,7 @@ impl BatchMaker {
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
-                validator_id
+                validator_id: validator_id.clone()
             }
             .run()
             .await;
@@ -148,8 +148,7 @@ impl BatchMaker {
         let mut prefix_msg : Vec<u8> = Vec::new();
         prefix_msg.extend(prefix);
         prefix_msg.extend(serialized.clone());
-        let bytes = Bytes::from(prefix_msg.clone());
-        let handlers = self.network.broadcast(addresses, bytes).await;
+        let handlers = self.network.broadcast(addresses, Bytes::from(prefix_msg)).await;
 
         // Send the batch through the deliver channel for further processing.
         self.tx_message

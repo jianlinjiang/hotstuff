@@ -102,7 +102,10 @@ impl Synchronizer {
                                 let message = ConsensusMessage::SyncRequest(digest.clone(), name);
                                 let message = bincode::serialize(&message)
                                     .expect("Failed to serialize sync request");
-                                network.broadcast(addresses, Bytes::from(message)).await;
+                                let mut prefix_msg : Vec<u8> = Vec::new();
+                                prefix_msg.extend(validator_id.clone().into_bytes());
+                                prefix_msg.extend(message);
+                                network.broadcast(addresses, Bytes::from(prefix_msg)).await;
                             }
                         }
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(TIMER_ACCURACY));

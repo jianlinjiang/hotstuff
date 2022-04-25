@@ -28,7 +28,7 @@ impl fmt::Debug for DvfInfo {
       write!(
           f,
           "{}: Commitee({:?})",
-          self.validator_id,
+          self.validator_id.clone(),
           serde_json::to_string_pretty(&self.committee)
       )
   }
@@ -85,7 +85,7 @@ impl DvfCore {
 
     info!(
       "Node {} create a dvfcore instance with validator id {}",
-      name, &validator_id
+      name, validator_id.clone()
     );
 
     Mempool::spawn(
@@ -96,8 +96,8 @@ impl DvfCore {
       rx_consensus_to_mempool,
       tx_mempool_to_consensus,
       validator_id.clone(),
-      tx_handler_map,
-      mempool_handler_map
+      Arc::clone(&tx_handler_map),
+      Arc::clone(&mempool_handler_map)
     );
 
     Consensus::spawn(
@@ -110,7 +110,7 @@ impl DvfCore {
       tx_consensus_to_mempool,
       tx_commit,
       validator_id.clone(),
-      consensus_handler_map
+      Arc::clone(&consensus_handler_map)
     );
     info!("dvfcore {} successfully booted", validator_id);
     Ok(Self { commit: rx_commit })
@@ -119,6 +119,7 @@ impl DvfCore {
   pub async fn analyze_block(&mut self) {
     while let Some(_block) = self.commit.recv().await {
         // This is where we can further process committed block.
+        info!("receive consensus block");
     }
   }
 }

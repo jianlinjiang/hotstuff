@@ -72,7 +72,7 @@ impl Synchronizer {
                 network: SimpleSender::new(),
                 round: Round::default(),
                 pending: HashMap::new(),
-                validator_id
+                validator_id: validator_id.clone()
             }
             .run()
             .await;

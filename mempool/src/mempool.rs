@@ -81,7 +81,7 @@ impl Mempool {
             parameters,
             store,
             tx_consensus,
-            validator_id,
+            validator_id : validator_id.clone(),
         };
 
         // Spawn all mempool tasks.
@@ -128,9 +128,13 @@ impl Mempool {
         //     .transactions_address(&self.name)
         //     .expect("Our public key is not in the committee");
         // address.set_ip("0.0.0.0".parse().unwrap());
-        let validator_id : String = self.validator_id.clone();
-        let mut handler_map = tx_handler_map.write().await;
-        handler_map.insert(validator_id.clone(), TxReceiverHandler{tx_batch_maker});
+        {
+            let mut handler_map = tx_handler_map.write().await;
+            handler_map.insert(self.validator_id.clone(), TxReceiverHandler{tx_batch_maker});
+            info!("insert into tx handler_map");
+        }
+        
+        
         // NetworkReceiver::spawn(
         //     address,
         //     /* handler */ TxReceiverHandler { tx_batch_maker },
@@ -179,10 +183,10 @@ impl Mempool {
         //     .mempool_address(&self.name)
         //     .expect("Our public key is not in the committee");
         // address.set_ip("0.0.0.0".parse().unwrap());
-        let validator_id = self.validator_id.clone();
         {
             let mut handler_map = mempool_handler_map.write().await;
-            handler_map.insert(validator_id.clone(), MempoolReceiverHandler{tx_helper, tx_processor});
+            handler_map.insert(self.validator_id.clone(), MempoolReceiverHandler{tx_helper, tx_processor});
+            info!("insert into mempool handler_map");
         }
         
         // NetworkReceiver::spawn(

@@ -36,7 +36,7 @@ impl Helper {
                 store,
                 rx_request,
                 network: SimpleSender::new(),
-                validator_id
+                validator_id: validator_id.clone()
             }
             .run()
             .await;

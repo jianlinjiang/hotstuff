@@ -72,13 +72,14 @@ async fn main() {
             let parameters_file = subm.value_of("parameters");
             let store_path = subm.value_of("store").unwrap();
             match Node::new(tx_address, mempool_address, consensus_address, dvfcore_address, key_file, store_path, parameters_file).await {
-                Ok(_) => {
+                Ok(mut node) => {
                     // tokio::spawn(async move {
                     //     node.analyze_block().await;
                     // })
                     // .await
                     // .expect("Failed to analyze committed blocks");
-                    info!("start the dvf node success");
+                    info!("start dvf node {} success", node.name);
+                    node.process_dvfinfo().await;
                 }
                 Err(e) => error!("{}", e),
             }

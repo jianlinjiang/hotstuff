@@ -82,7 +82,7 @@ impl Core {
                 timer: Timer::new(timeout_delay),
                 aggregator: Aggregator::new(committee),
                 network: SimpleSender::new(),
-                validator_id
+                validator_id: validator_id.clone()
             }
             .run()
             .await

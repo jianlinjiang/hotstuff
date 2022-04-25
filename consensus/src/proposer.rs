@@ -25,6 +25,7 @@ pub struct Proposer {
     tx_loopback: Sender<Block>,
     buffer: HashSet<Digest>,
     network: ReliableSender,
+    validator_id: String
 }
 
 impl Proposer {
@@ -35,6 +36,7 @@ impl Proposer {
         rx_mempool: Receiver<Digest>,
         rx_message: Receiver<ProposerMessage>,
         tx_loopback: Sender<Block>,
+        validator_id: String
     ) {
         tokio::spawn(async move {
             Self {
@@ -46,6 +48,7 @@ impl Proposer {
                 tx_loopback,
                 buffer: HashSet::new(),
                 network: ReliableSender::new(),
+                validator_id
             }
             .run()
             .await;
@@ -91,9 +94,13 @@ impl Proposer {
             .unzip();
         let message = bincode::serialize(&ConsensusMessage::Propose(block.clone()))
             .expect("Failed to serialize block");
+        let mut prefix_msg : Vec<u8> = Vec::new();
+        let prefix = self.validator_id.clone().into_bytes();
+        prefix_msg.extend(prefix);
+        prefix_msg.extend(message); 
         let handles = self
             .network
-            .broadcast(addresses, Bytes::from(message))
+            .broadcast(addresses, Bytes::from(prefix_msg))
             .await;
 
         // Send our block to the core for processing.

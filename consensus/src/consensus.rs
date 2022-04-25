@@ -21,6 +21,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use std::collections::HashMap;
 use futures::executor::block_on;
+use log::{info};
 #[cfg(test)]
 #[path = "tests/consensus_tests.rs"]
 pub mod consensus_tests;
@@ -69,9 +70,12 @@ impl Consensus {
         //     .address(&name)
         //     .expect("Our public key is not in the committee");
         // address.set_ip("0.0.0.0".parse().unwrap());
-
-        let mut handler_map = block_on(consensus_handler_map.write());
-        handler_map.insert(validator_id.clone(), ConsensusReceiverHandler{tx_consensus, tx_helper});
+        {
+            let mut handler_map = block_on(consensus_handler_map.write());
+            handler_map.insert(validator_id.clone(), ConsensusReceiverHandler{tx_consensus, tx_helper});
+            info!("insert into consensus handler_map");
+        }
+        
         // NetworkReceiver::spawn(
         //     address,
         //     /* handler */
@@ -126,6 +130,7 @@ impl Consensus {
             rx_mempool,
             /* rx_message */ rx_proposer,
             tx_loopback,
+            validator_id.clone()
         );
 
         // Spawn the helper module.

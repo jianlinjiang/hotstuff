@@ -12,6 +12,7 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use std::collections::HashMap;
 use std::sync::{Arc};
 use tokio::sync::{RwLock};
+use futures::executor::block_on;
 #[cfg(test)]
 #[path = "tests/receiver_tests.rs"]
 pub mod receiver_tests;
@@ -87,6 +88,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                                 }
                             },
                             None => {
+                                error!("{:?}", message);
                                 error!("there is no handler for this prefix, some error happen!");
                             } 
                         }
