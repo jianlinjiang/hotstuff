@@ -20,16 +20,6 @@ pub enum ConfigError {
 }
 
 pub trait Export: Serialize + DeserializeOwned {
-    fn parse(config_str: &Vec<u8>) -> Result<Self, ConfigError> {
-        let reader = || -> Result<Self, std::io::Error> {
-            
-            Ok(serde_json::from_slice(config_str.as_slice())?)
-        };
-        reader().map_err(|e| ConfigError::ReadError {
-            file: "parse".to_string(),
-            message: e.to_string(),
-        })
-    }
 
     fn read(path: &str) -> Result<Self, ConfigError> {
         let reader = || -> Result<Self, std::io::Error> {

@@ -33,6 +33,7 @@ impl Synchronizer {
         store: Store,
         tx_loopback: Sender<Block>,
         sync_retry_delay: u64,
+        validator_id: String
     ) -> Self {
         let mut network = SimpleSender::new();
         let (tx_inner, mut rx_inner): (_, Receiver<Block>) = channel(CHANNEL_CAPACITY);
@@ -67,7 +68,10 @@ impl Synchronizer {
                                 let message = ConsensusMessage::SyncRequest(parent, name);
                                 let message = bincode::serialize(&message)
                                     .expect("Failed to serialize sync request");
-                                network.send(address, Bytes::from(message)).await;
+                                let mut prefix_msg : Vec<u8> = Vec::new();
+                                prefix_msg.extend(validator_id.clone().into_bytes());
+                                prefix_msg.extend(message);
+                                network.send(address, Bytes::from(prefix_msg)).await;
                             }
                         }
                     },

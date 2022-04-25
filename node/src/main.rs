@@ -165,10 +165,11 @@ fn deploy_testbed(nodes: usize) -> Result<Vec<JoinHandle<()>>, Box<dyn std::erro
 
             Ok(tokio::spawn(async move {
                 match Node::new(&tx_address.to_string(), &mem_address.to_string(), &consensus_address.to_string(), &dvf_address.to_string(), &key_file, &store_path, None).await {
-                    Ok(_) => {
+                    Ok(mut node) => {
                         // Sink the commit channel.
                         // while node.commit.recv().await.is_some() {}
                         info!("start dvf node {} success", name);
+                        node.process_dvfinfo().await;
                     }
                     Err(e) => error!("{}", e),
                 }

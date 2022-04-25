@@ -41,7 +41,7 @@ impl<Handler: MessageHandler> Receiver<Handler> {
     /// Spawn a new network receiver handling connections from any incoming peer.
     pub fn spawn(address: SocketAddr, handler_map: Arc<RwLock<HashMap<String, Handler>>>) {
         tokio::spawn(async move {
-            Self { address, handler_map }.run().await;
+            Self { address, handler_map : Arc::clone(&handler_map) }.run().await;
         });
     }
 
@@ -74,13 +74,14 @@ impl<Handler: MessageHandler> Receiver<Handler> {
                 match frame.map_err(|e| NetworkError::FailedToReceiveMessage(peer, e)) {
                     Ok(message) => {
                         // get first msg_prefix_len
-                        let prefix = String::from_utf8(message[0..msg_prefix_len-1].to_vec()).unwrap();
+                        let prefix = String::from_utf8(message[0..msg_prefix_len].to_vec()).unwrap();
                         let handlers = handler_map.read().await;
                         match handlers.get(&prefix) {
                             Some(handler) => {
                                 // trunctate the prefix
                                 let mut mut_msg = message;
-                                if let Err(e) = handler.dispatch(&mut writer, mut_msg.split_to(msg_prefix_len).freeze()).await {
+                                let _ = mut_msg.split_to(msg_prefix_len);
+                                if let Err(e) = handler.dispatch(&mut writer, mut_msg.freeze()).await {
                                     warn!("{}", e);
                                     return;
                                 }

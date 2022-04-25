@@ -180,8 +180,11 @@ impl Mempool {
         //     .expect("Our public key is not in the committee");
         // address.set_ip("0.0.0.0".parse().unwrap());
         let validator_id = self.validator_id.clone();
-        let mut handler_map = mempool_handler_map.write().await;
-        handler_map.insert(validator_id.clone(), MempoolReceiverHandler{tx_helper, tx_processor});
+        {
+            let mut handler_map = mempool_handler_map.write().await;
+            handler_map.insert(validator_id.clone(), MempoolReceiverHandler{tx_helper, tx_processor});
+        }
+        
         // NetworkReceiver::spawn(
         //     address,
         //     /* handler */

@@ -1,4 +1,3 @@
-use crate::config::Export as _;
 use crate::config::{Committee, ConfigError, Parameters};
 use crypto::{PublicKey, SecretKey};
 use consensus::{Block, Consensus, ConsensusReceiverHandler};
@@ -6,55 +5,51 @@ use crypto::SignatureService;
 use log::info;
 use mempool::{Mempool, TxReceiverHandler, MempoolReceiverHandler};
 use store::Store;
-use tokio::sync::mpsc::{channel, Receiver};
-use network::{MessageHandler, Writer, PREFIX_LEN};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
+use network::{MessageHandler, Writer};
 use std::sync::{Arc};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use bytes::Bytes;
 use std::error::Error;
 use tokio::sync::RwLock;
-use log::error;
-
+use serde::{Deserialize, Serialize};
+use std::fmt;
 pub const CHANNEL_CAPACITY: usize = 1_000;
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct DvfInfo {
+  pub validator_id : String,
+  pub committee: Committee
+}
+
+impl fmt::Debug for DvfInfo {
+  fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+      write!(
+          f,
+          "{}: Commitee({:?})",
+          self.validator_id,
+          serde_json::to_string_pretty(&self.committee)
+      )
+  }
+}
+
 #[derive(Clone)]
 pub struct DvfReceiverHandler {
-  pub name: PublicKey,
-  pub secret_key: SecretKey,
-  pub base_store_path: String,
-  pub tx_handler_map : Arc<RwLock<HashMap<String, TxReceiverHandler>>>,
-  pub mempool_handler_map : Arc<RwLock<HashMap<String, MempoolReceiverHandler>>>,
-  pub consensus_handler_map: Arc<RwLock<HashMap<String, ConsensusReceiverHandler>>>
+  // pub name: PublicKey,
+  // pub secret_key: SecretKey,
+  // pub base_store_path: String,
+  // pub tx_handler_map : Arc<RwLock<HashMap<String, TxReceiverHandler>>>,
+  // pub mempool_handler_map : Arc<RwLock<HashMap<String, MempoolReceiverHandler>>>,
+  // pub consensus_handler_map: Arc<RwLock<HashMap<String, ConsensusReceiverHandler>>>,
+  pub tx_dvfinfo : Sender<DvfInfo>
 }
 
 #[async_trait]
 impl MessageHandler for DvfReceiverHandler {
     async fn dispatch(&self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
-        let prefix = String::from_utf8(message[0..PREFIX_LEN-1].to_vec()).unwrap();
-        let committee_str = String::from_utf8(message[PREFIX_LEN..].to_vec()).unwrap();
-
-        match DvfCore::new(
-          &committee_str.as_bytes().to_vec(),
-          self.name,
-          self.secret_key.clone(),
-          prefix,
-          self.base_store_path.clone(),
-          Arc::clone(&self.tx_handler_map),
-          Arc::clone(&self.mempool_handler_map),
-          Arc::clone(&self.consensus_handler_map)
-        ).await {
-          Ok(mut dvfcore) => {
-            tokio::spawn(async move {
-              dvfcore.analyze_block().await;
-            })
-            .await
-            .expect("Failed to analyze committed blocks");
-          }
-          Err(e) => {
-            error!("{}", e);
-          }
-        };
-
+        let dvfinfo = serde_json::from_slice(&message.to_vec())?;
+        self.tx_dvfinfo.send(dvfinfo).await.unwrap();
         // Give the change to schedule other tasks.
         tokio::task::yield_now().await;
         Ok(())
@@ -67,7 +62,7 @@ pub struct DvfCore {
 
 impl DvfCore {
   pub async fn new(
-    committee_str: &Vec<u8>,
+    committee: Committee,
     name: PublicKey,
     secret_key: SecretKey,
     validator_id: String,
@@ -80,7 +75,6 @@ impl DvfCore {
     let (tx_consensus_to_mempool, rx_consensus_to_mempool) = channel(CHANNEL_CAPACITY);
     let (tx_mempool_to_consensus, rx_mempool_to_consensus) = channel(CHANNEL_CAPACITY);
 
-    let committee = Committee::parse(committee_str)?;
     let parameters = Parameters::default();
 
     let store_path = base_store_path + "/" + &validator_id;

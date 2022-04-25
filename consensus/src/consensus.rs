@@ -98,6 +98,7 @@ impl Consensus {
             store.clone(),
             tx_loopback.clone(),
             parameters.sync_retry_delay,
+            validator_id.clone()
         );
 
         // Spawn the consensus core.

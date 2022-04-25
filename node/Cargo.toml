@@ -34,3 +34,7 @@ benchmark = ["consensus/benchmark", "mempool/benchmark"]
 name = "client"   
 path = "src/client.rs" 
 required-features = ["benchmark"] 
+
+[[bin]]
+name = "dvfclient"
+path = "src/dvfclient.rs"
