@@ -38,3 +38,7 @@ required-features = ["benchmark"]
 [[bin]]
 name = "dvfclient"
 path = "src/dvfclient.rs"
+
+[[bin]]
+name = "txclient"
+path = "src/txclient.rs"

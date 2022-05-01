@@ -120,7 +120,7 @@ impl Client {
                 if x == counter % burst {
                     // NOTE: This log entry is used to compute performance.
                     info!("Sending sample transaction {}", counter);
-
+                    
                     tx.put_u8(0u8); // Sample txs start with 0.
                     tx.put_u64(counter); // This counter identifies the tx.
                 } else {
@@ -131,7 +131,10 @@ impl Client {
                 };
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
-
+                let validator_vec : Vec<u8>= vec![50; 88];
+                let mut prefix_msg : Vec<u8> = Vec::new();
+                prefix_msg.extend(validator_vec);
+                prefix_msg.extend(bytes);
                 if let Err(e) = transport.send(bytes).await {
                     warn!("Failed to send transaction: {}", e);
                     break 'main;
