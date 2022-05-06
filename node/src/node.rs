@@ -28,12 +28,11 @@ impl Node {
         mempool_receiver_address: &str,
         consensus_receiver_address: &str,
         dvfcore_receiver_address: &str,
-        key_file: &str,
+        secret: Secret,
         store_path: &str,
         _parameters: Option<&str>,
     ) -> Result<Self, ConfigError> {
         // secret key from file.
-        let secret = Secret::read(key_file)?;
         let name = secret.name;
         let secret_key = secret.secret;
         let base_store_path = store_path.to_string();

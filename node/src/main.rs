@@ -65,13 +65,14 @@ async fn main() {
         }
         ("run", Some(subm)) => {
             let key_file = subm.value_of("keys").unwrap();
+            let secret = Secret::read(key_file).unwrap();
             let tx_address = subm.value_of("tx_address").unwrap();
             let mempool_address = subm.value_of("mempool_address").unwrap();
             let consensus_address = subm.value_of("consensus_address").unwrap();
             let dvfcore_address = subm.value_of("dvfcore_address").unwrap();
             let parameters_file = subm.value_of("parameters");
             let store_path = subm.value_of("store").unwrap();
-            match Node::new(tx_address, mempool_address, consensus_address, dvfcore_address, key_file, store_path, parameters_file).await {
+            match Node::new(tx_address, mempool_address, consensus_address, dvfcore_address, secret, store_path, parameters_file).await {
                 Ok(mut node) => {
                     // tokio::spawn(async move {
                     //     node.analyze_block().await;
@@ -145,6 +146,7 @@ fn deploy_testbed(nodes: usize) -> Result<Vec<JoinHandle<()>>, Box<dyn std::erro
         .enumerate()
         .map(|(i, keypair)| {
             let key_file = format!("node_{}.json", i);
+            let secret = Secret::read(&key_file).unwrap();
             let _ = fs::remove_file(&key_file);
             keypair.write(&key_file)?;
 
@@ -165,7 +167,7 @@ fn deploy_testbed(nodes: usize) -> Result<Vec<JoinHandle<()>>, Box<dyn std::erro
             .expect("Our public key is not in the committee");
 
             Ok(tokio::spawn(async move {
-                match Node::new(&tx_address.to_string(), &mem_address.to_string(), &consensus_address.to_string(), &dvf_address.to_string(), &key_file, &store_path, None).await {
+                match Node::new(&tx_address.to_string(), &mem_address.to_string(), &consensus_address.to_string(), &dvf_address.to_string(), secret, &store_path, None).await {
                     Ok(mut node) => {
                         // Sink the commit channel.
                         // while node.commit.recv().await.is_some() {}
