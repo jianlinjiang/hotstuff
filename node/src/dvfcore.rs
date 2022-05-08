@@ -16,7 +16,9 @@ use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 pub const CHANNEL_CAPACITY: usize = 1_000;
-
+use bls::{Hash256, Signature};
+use std::net::SocketAddr;
+use types::Keypair;
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DvfInfo {
   pub validator_id : String,
@@ -56,8 +58,49 @@ impl MessageHandler for DvfReceiverHandler {
     }
 }
 
+
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SignatureInfo {
+  pub from : bls::PublicKey,
+  pub signature: Signature,
+  pub msg : Hash256
+}
+
+impl fmt::Debug for SignatureInfo {
+  fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+      write!(
+          f,
+          "from: {:?}, signature: {:?}, msg: {:?}",
+          self.from,
+          self.signature,
+          self.msg
+      )
+  }
+}
+
+#[derive(Clone)]
+pub struct DvfSignatureReceiverHandler {
+  pub tx_signature : Sender<SignatureInfo>
+}
+
+#[async_trait]
+impl MessageHandler for DvfSignatureReceiverHandler {
+    async fn dispatch(&self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
+        println!("receive a signature");
+        let signature_info = serde_json::from_slice(&message.to_vec())?;
+        self.tx_signature.send(signature_info).await.unwrap();
+        // Give the change to schedule other tasks.
+        tokio::task::yield_now().await;
+        Ok(())
+    }
+}
+
 pub struct DvfCore {
-  pub commit: Receiver<Block>
+  pub store: Store,
+  pub commit: Receiver<Block>,
+  pub broadcast_signature_addresses : Vec<SocketAddr>,
+  pub validator_id: String
 }
 
 impl DvfCore {
@@ -88,6 +131,8 @@ impl DvfCore {
       name, validator_id.clone()
     );
 
+    let broadcast_signature_addresses = committee.mempool.broadcast_signature_addresses(&name);
+
     Mempool::spawn(
       name,
       committee.mempool,
@@ -105,7 +150,7 @@ impl DvfCore {
       committee.consensus,
       parameters.consensus,
       signature_service,
-      store,
+      store.clone(),
       rx_mempool_to_consensus,
       tx_consensus_to_mempool,
       tx_commit,
@@ -113,7 +158,8 @@ impl DvfCore {
       Arc::clone(&consensus_handler_map)
     );
     info!("dvfcore {} successfully booted", validator_id);
-    Ok(Self { commit: rx_commit })
+    Ok(Self { commit: rx_commit, store: store, broadcast_signature_addresses: broadcast_signature_addresses, validator_id: validator_id})
+    
   }
 
   pub async fn analyze_block(&mut self) {

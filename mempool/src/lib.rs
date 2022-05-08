@@ -11,4 +11,5 @@ mod synchronizer;
 mod common;
 
 pub use crate::config::{Committee, Parameters};
-pub use crate::mempool::{ConsensusMempoolMessage, Mempool, TxReceiverHandler, MempoolReceiverHandler};
+pub use crate::mempool::{ConsensusMempoolMessage, Mempool, MempoolMessage, TxReceiverHandler, MempoolReceiverHandler};
+pub use crate::batch_maker::{Batch, Transaction};

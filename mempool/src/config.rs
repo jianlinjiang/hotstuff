@@ -56,7 +56,9 @@ pub struct Authority {
     /// Address to receive messages from other nodes.
     pub mempool_address: SocketAddr,
     /// Address to receive messages from validator
-    pub dvf_address: SocketAddr
+    pub dvf_address: SocketAddr,
+    /// Address to receive signature from validator
+    pub signature_address: SocketAddr,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -66,16 +68,17 @@ pub struct Committee {
 }
 
 impl Committee {
-    pub fn new(info: Vec<(PublicKey, Stake, SocketAddr, SocketAddr, SocketAddr)>, epoch: EpochNumber) -> Self {
+    pub fn new(info: Vec<(PublicKey, Stake, SocketAddr, SocketAddr, SocketAddr, SocketAddr)>, epoch: EpochNumber) -> Self {
         Self {
             authorities: info
                 .into_iter()
-                .map(|(name, stake, transactions_address, mempool_address, dvf_address)| {
+                .map(|(name, stake, transactions_address, mempool_address, dvf_address, signature_address)| {
                     let authority = Authority {
                         stake,
                         transactions_address,
                         mempool_address,
-                        dvf_address
+                        dvf_address,
+                        signature_address
                     };
                     (name, authority)
                 })
@@ -119,5 +122,19 @@ impl Committee {
     /// Returns the ssv address of a spefic node
     pub fn dvf_address(&self, name: &PublicKey) -> Option<SocketAddr> {
         self.authorities.get(name).map(|x| x.dvf_address)
+    }
+
+    /// Returns the ssv address of a spefic node
+    pub fn signature_address(&self, name: &PublicKey) -> Option<SocketAddr> {
+        self.authorities.get(name).map(|x| x.signature_address)
+    }
+
+    /// Returns the ssv address of a spefic node
+    pub fn broadcast_signature_addresses(&self, myself: &PublicKey) -> Vec<SocketAddr> {
+        self.authorities
+        .iter()
+        .filter(|(name, _)| name != &myself)
+        .map(|(_, x)| x.signature_address)
+        .collect()
     }
 }

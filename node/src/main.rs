@@ -70,9 +70,10 @@ async fn main() {
             let mempool_address = subm.value_of("mempool_address").unwrap();
             let consensus_address = subm.value_of("consensus_address").unwrap();
             let dvfcore_address = subm.value_of("dvfcore_address").unwrap();
+            let signature_address = subm.value_of("signature_address").unwrap();
             let parameters_file = subm.value_of("parameters");
             let store_path = subm.value_of("store").unwrap();
-            match Node::new(tx_address, mempool_address, consensus_address, dvfcore_address, secret, store_path, parameters_file).await {
+            match Node::new(tx_address, mempool_address, consensus_address, dvfcore_address, signature_address, secret, store_path, parameters_file).await {
                 Ok(mut node) => {
                     // tokio::spawn(async move {
                     //     node.analyze_block().await;
@@ -80,7 +81,7 @@ async fn main() {
                     // .await
                     // .expect("Failed to analyze committed blocks");
                     info!("start dvf node {} success", node.name);
-                    node.process_dvfinfo().await;
+                    // node.process_dvfinfo().await;
                 }
                 Err(e) => error!("{}", e),
             }
@@ -115,7 +116,8 @@ fn deploy_testbed(nodes: usize) -> Result<Vec<JoinHandle<()>>, Box<dyn std::erro
                 let front = format!("127.0.0.1:{}", 25_000 + i).parse().unwrap();
                 let mempool = format!("127.0.0.1:{}", 25_100 + i).parse().unwrap();
                 let dvf = format!("127.0.0.1:{}", 25_300 + i).parse().unwrap();
-                (name, stake, front, mempool, dvf)
+                let signarure = format!("127.0.0.1:{}", 25_400 + i).parse().unwrap();
+                (name, stake, front, mempool, dvf, signarure)
             })
             .collect(),
         epoch,
@@ -146,10 +148,9 @@ fn deploy_testbed(nodes: usize) -> Result<Vec<JoinHandle<()>>, Box<dyn std::erro
         .enumerate()
         .map(|(i, keypair)| {
             let key_file = format!("node_{}.json", i);
-            let secret = Secret::read(&key_file).unwrap();
             let _ = fs::remove_file(&key_file);
             keypair.write(&key_file)?;
-
+            let secret = keypair.clone();
             let store_path = format!("db_{}", i);
             let _ = fs::remove_dir_all(&store_path);
             let name = keypair.name.clone();
@@ -166,13 +167,16 @@ fn deploy_testbed(nodes: usize) -> Result<Vec<JoinHandle<()>>, Box<dyn std::erro
             let dvf_address = committee.mempool.dvf_address(&name)
             .expect("Our public key is not in the committee");
 
+            let signature_address = committee.mempool.signature_address(&name)
+            .expect("Our public key is not in the committee");
+
             Ok(tokio::spawn(async move {
-                match Node::new(&tx_address.to_string(), &mem_address.to_string(), &consensus_address.to_string(), &dvf_address.to_string(), secret, &store_path, None).await {
+                match Node::new(&tx_address.to_string(), &mem_address.to_string(), &consensus_address.to_string(), &dvf_address.to_string(), &signature_address.to_string(), secret, &store_path, None).await {
                     Ok(mut node) => {
                         // Sink the commit channel.
                         // while node.commit.recv().await.is_some() {}
                         info!("start dvf node {} success", name);
-                        node.process_dvfinfo().await;
+                        // node.process_dvfinfo().await;
                     }
                     Err(e) => error!("{}", e),
                 }

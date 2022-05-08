@@ -29,10 +29,10 @@ async fn main() -> Result<()> {
     .context(format!("failed to connect to {}", target))?;
   let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
   let mut message : Vec<u8>= vec![50; 88];
-  let data: Vec<u8> = vec![96; 100];
+  let data: Vec<u8> = vec![96; 32];
   message.extend(data);
   if let Err(e) = transport.send(Bytes::from(message)).await {
-    warn!("Failed to send transaction: {}", e);
+    println!("Failed to send transaction: {}", e);
   } 
   Ok(())
 }

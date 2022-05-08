@@ -56,7 +56,7 @@ pub struct Parameters {
 
 impl Export for Parameters {}
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Secret {
     pub name: PublicKey,
     pub secret: SecretKey,

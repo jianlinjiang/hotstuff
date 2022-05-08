@@ -12,7 +12,7 @@ use crate::dvfcore::DvfCore;
 use tokio::sync::mpsc::{channel, Receiver};
 use crypto::{PublicKey, SecretKey};
 /// The default channel capacity for this module.
-use crate::dvfcore::{DvfInfo, DvfReceiverHandler};
+use crate::dvfcore::{DvfInfo, DvfReceiverHandler, DvfSignatureReceiverHandler};
 pub struct Node {
     pub name : PublicKey,
     pub secret_key: SecretKey,
@@ -21,6 +21,7 @@ pub struct Node {
     pub tx_handler_map : Arc<RwLock<HashMap<String, TxReceiverHandler>>>,
     pub mempool_handler_map : Arc<RwLock<HashMap<String, MempoolReceiverHandler>>>,
     pub consensus_handler_map: Arc<RwLock<HashMap<String, ConsensusReceiverHandler>>>,
+    pub signature_handler_map: Arc<RwLock<HashMap<String, DvfSignatureReceiverHandler>>>,
 }
 impl Node {
     pub async fn new(
@@ -28,6 +29,7 @@ impl Node {
         mempool_receiver_address: &str,
         consensus_receiver_address: &str,
         dvfcore_receiver_address: &str,
+        signature_receiver_address: &str,
         secret: Secret,
         store_path: &str,
         _parameters: Option<&str>,
@@ -45,6 +47,7 @@ impl Node {
         let tx_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let mempool_handler_map = Arc::new(RwLock::new(HashMap::new()));
         let consensus_handler_map = Arc::new(RwLock::new(HashMap::new()));
+        let signature_handler_map = Arc::new(RwLock::new(HashMap::new()));
 
         let mut tx_network_address : SocketAddr = tx_receiver_address.parse().unwrap();
         tx_network_address.set_ip("0.0.0.0".parse().unwrap());
@@ -63,6 +66,14 @@ impl Node {
         info!(
             "Node {} listening to consensus messages on {}",
             name, consensus_network_address
+        );
+
+        let mut signature_network_address : SocketAddr = signature_receiver_address.parse().unwrap();
+        signature_network_address.set_ip("0.0.0.0".parse().unwrap());
+        NetworkReceiver::spawn(signature_network_address, Arc::clone(&signature_handler_map));
+        info!(
+            "Node {} listening to signature messages on {}",
+            name, signature_network_address
         );
         
         // set dvfcore handler map
@@ -87,7 +98,7 @@ impl Node {
         info!("DvfCore listening to dvf messages on {}", dvfcore_network_address);
 
         info!("Node {} successfully booted", name);
-        Ok(Self { name, secret_key, base_store_path, rx_dvfinfo, tx_handler_map: Arc::clone(&tx_handler_map), mempool_handler_map: Arc::clone(&mempool_handler_map), consensus_handler_map: Arc::clone(&consensus_handler_map)})
+        Ok(Self { name, secret_key, base_store_path, rx_dvfinfo, tx_handler_map: Arc::clone(&tx_handler_map), mempool_handler_map: Arc::clone(&mempool_handler_map), consensus_handler_map: Arc::clone(&consensus_handler_map), signature_handler_map: Arc::clone(&signature_handler_map)})
     }
 
     pub fn print_key_file(filename: &str) -> Result<(), ConfigError> {
@@ -110,7 +121,7 @@ impl Node {
               ).await {
                 Ok(mut dvfcore) => {
                   tokio::spawn(async move {
-                    dvfcore.analyze_block().await;
+                    // dvfcore.analyze_block().await;
                   })
                   .await
                   .expect("Failed to analyze committed blocks");
