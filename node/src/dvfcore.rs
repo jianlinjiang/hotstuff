@@ -64,17 +64,19 @@ impl MessageHandler for DvfReceiverHandler {
 pub struct SignatureInfo {
   pub from : bls::PublicKey,
   pub signature: Signature,
-  pub msg : Hash256
+  pub msg : Hash256,
+  pub id: u32
 }
 
 impl fmt::Debug for SignatureInfo {
   fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
       write!(
           f,
-          "from: {:?}, signature: {:?}, msg: {:?}",
+          "from: {:?}, signature: {:?}, msg: {:?}, id: {}",
           self.from,
           self.signature,
-          self.msg
+          self.msg,
+          self.id
       )
   }
 }
@@ -87,7 +89,6 @@ pub struct DvfSignatureReceiverHandler {
 #[async_trait]
 impl MessageHandler for DvfSignatureReceiverHandler {
     async fn dispatch(&self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
-        println!("receive a signature");
         let signature_info = serde_json::from_slice(&message.to_vec())?;
         self.tx_signature.send(signature_info).await.unwrap();
         // Give the change to schedule other tasks.
