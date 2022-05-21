@@ -8,7 +8,7 @@ use crypto::PublicKey;
 use ed25519_dalek::{Digest as _, Sha512};
 #[cfg(feature = "benchmark")]
 use log::info;
-use network::ReliableSender;
+use network::{ReliableSender, DvfMessage};
 #[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
 use std::net::SocketAddr;
@@ -40,7 +40,7 @@ pub struct BatchMaker {
     current_batch_size: usize,
     /// A network sender to broadcast the batches to the other mempools.
     network: ReliableSender,
-    validator_id: String
+    validator_id: u64
 }
 
 impl BatchMaker {
@@ -50,7 +50,7 @@ impl BatchMaker {
         rx_transaction: Receiver<Transaction>,
         tx_message: Sender<QuorumWaiterMessage>,
         mempool_addresses: Vec<(PublicKey, SocketAddr)>,
-        validator_id: String
+        validator_id: u64
     ) {
         tokio::spawn(async move {
             Self {
@@ -62,7 +62,7 @@ impl BatchMaker {
                 current_batch: Batch::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
-                validator_id: validator_id.clone()
+                validator_id: validator_id
             }
             .run()
             .await;
@@ -144,11 +144,9 @@ impl BatchMaker {
 
         // Broadcast the batch through the network.
         let (names, addresses): (Vec<_>, _) = self.mempool_addresses.iter().cloned().unzip();
-        let prefix = self.validator_id.clone().into_bytes();
-        let mut prefix_msg : Vec<u8> = Vec::new();
-        prefix_msg.extend(prefix);
-        prefix_msg.extend(serialized.clone());
-        let handlers = self.network.broadcast(addresses, Bytes::from(prefix_msg)).await;
+        let dvf_message = DvfMessage { validator_id: self.validator_id, message: serialized.clone()};
+        let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+        let handlers = self.network.broadcast(addresses, Bytes::from(serialized_msg)).await;
 
         // Send the batch through the deliver channel for further processing.
         self.tx_message

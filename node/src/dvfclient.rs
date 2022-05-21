@@ -12,6 +12,7 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use crate::config::Committee;
 use crate::config::Export;
 use crate::dvfcore::DvfInfo;
+use network::DvfMessage;
 #[tokio::main]
 async fn main() -> Result<()> {
   let matches = App::new(crate_name!())
@@ -44,16 +45,13 @@ async fn main() -> Result<()> {
   .context(format!("failed to connect to {}", target))?;
 
   let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
-
-  let validator_vec : Vec<u8>= vec![50; 88];
-  let validator_id = String::from_utf8(validator_vec).unwrap();
-  let dvfinfo = DvfInfo { validator_id, committee };
-  let empty_vec : Vec<u8>= vec![48;88];
-  let mut prefix_msg : Vec<u8> = Vec::new();
-  prefix_msg.extend(empty_vec);
+  
+  let validator_id :u64 = 1;
+  let dvfinfo = DvfInfo {validator_id, committee};
   let dvfinfo_bytes = serde_json::to_vec(&dvfinfo).unwrap();
-  prefix_msg.extend(dvfinfo_bytes);
-  if let Err(e) = transport.send(Bytes::from(prefix_msg)).await {
+  let dvf_message = DvfMessage { validator_id: validator_id, message: dvfinfo_bytes};
+  let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+  if let Err(e) = transport.send(Bytes::from(serialized_msg)).await {
     warn!("Failed to send dvf command: {}", e);
   }
   Ok(())

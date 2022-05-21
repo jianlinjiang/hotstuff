@@ -6,7 +6,7 @@ use crypto::{Digest, PublicKey, SignatureService};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 use log::{debug, info};
-use network::{CancelHandler, ReliableSender};
+use network::{CancelHandler, ReliableSender, DvfMessage};
 use std::collections::HashSet;
 use tokio::sync::mpsc::{Receiver, Sender};
 
@@ -25,7 +25,7 @@ pub struct Proposer {
     tx_loopback: Sender<Block>,
     buffer: HashSet<Digest>,
     network: ReliableSender,
-    validator_id: String
+    validator_id: u64
 }
 
 impl Proposer {
@@ -36,7 +36,7 @@ impl Proposer {
         rx_mempool: Receiver<Digest>,
         rx_message: Receiver<ProposerMessage>,
         tx_loopback: Sender<Block>,
-        validator_id: String
+        validator_id: u64
     ) {
         tokio::spawn(async move {
             Self {
@@ -94,13 +94,11 @@ impl Proposer {
             .unzip();
         let message = bincode::serialize(&ConsensusMessage::Propose(block.clone()))
             .expect("Failed to serialize block");
-        let mut prefix_msg : Vec<u8> = Vec::new();
-        let prefix = self.validator_id.clone().into_bytes();
-        prefix_msg.extend(prefix);
-        prefix_msg.extend(message); 
+        let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
+        let serialized_msg = bincode::serialize(&dvf_message).unwrap();
         let handles = self
             .network
-            .broadcast(addresses, Bytes::from(prefix_msg))
+            .broadcast(addresses, Bytes::from(serialized_msg))
             .await;
 
         // Send our block to the core for processing.

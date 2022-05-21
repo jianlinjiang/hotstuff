@@ -3,7 +3,7 @@ use crate::consensus::ConsensusMessage;
 use bytes::Bytes;
 use crypto::{Digest, PublicKey};
 use log::warn;
-use network::SimpleSender;
+use network::{SimpleSender, DvfMessage};
 use store::Store;
 use tokio::sync::mpsc::Receiver;
 
@@ -21,18 +21,18 @@ pub struct Helper {
     rx_requests: Receiver<(Digest, PublicKey)>,
     /// A network sender to reply to the sync requests.
     network: SimpleSender,
-    validator_id: String
+    validator_id: u64
 }
 
 impl Helper {
-    pub fn spawn(committee: Committee, store: Store, rx_requests: Receiver<(Digest, PublicKey)>, validator_id: String) {
+    pub fn spawn(committee: Committee, store: Store, rx_requests: Receiver<(Digest, PublicKey)>, validator_id: u64) {
         tokio::spawn(async move {
             Self {
                 committee,
                 store,
                 rx_requests,
                 network: SimpleSender::new(),
-                validator_id: validator_id.clone()
+                validator_id
             }
             .run()
             .await;
@@ -63,12 +63,9 @@ impl Helper {
                     bincode::deserialize(&bytes).expect("Failed to deserialize our own block");
                 let message = bincode::serialize(&ConsensusMessage::Propose(block))
                     .expect("Failed to serialize block");
-
-                let prefix = self.validator_id.clone().into_bytes();
-                let mut prefix_msg : Vec<u8> = Vec::new();
-                prefix_msg.extend(prefix);
-                prefix_msg.extend(message);    
-                self.network.send(address, Bytes::from(prefix_msg)).await;
+                let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
+                let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                self.network.send(address, Bytes::from(serialized_msg)).await;
             }
         }
     }

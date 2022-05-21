@@ -18,10 +18,10 @@ pub struct Node {
     pub secret_key: SecretKey,
     pub base_store_path: String,
     pub rx_dvfinfo: Receiver<DvfInfo>,
-    pub tx_handler_map : Arc<RwLock<HashMap<String, TxReceiverHandler>>>,
-    pub mempool_handler_map : Arc<RwLock<HashMap<String, MempoolReceiverHandler>>>,
-    pub consensus_handler_map: Arc<RwLock<HashMap<String, ConsensusReceiverHandler>>>,
-    pub signature_handler_map: Arc<RwLock<HashMap<String, DvfSignatureReceiverHandler>>>,
+    pub tx_handler_map : Arc<RwLock<HashMap<u64, TxReceiverHandler>>>,
+    pub mempool_handler_map : Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
+    pub consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
+    pub signature_handler_map: Arc<RwLock<HashMap<u64, DvfSignatureReceiverHandler>>>,
 }
 impl Node {
     pub async fn new(
@@ -77,12 +77,11 @@ impl Node {
         );
         
         // set dvfcore handler map
-        let dvfcore_handler_map : Arc<RwLock<HashMap<String, DvfReceiverHandler>>>= Arc::new(RwLock::new(HashMap::new()));
+        let dvfcore_handler_map : Arc<RwLock<HashMap<u64, DvfReceiverHandler>>>= Arc::new(RwLock::new(HashMap::new()));
         let (tx_dvfinfo, rx_dvfinfo) = channel(1);
         {
             let mut dvfcore_handlers = dvfcore_handler_map.write().await; 
-            let empty_vec: Vec<u8> = vec![48; 88];
-            let empty_id = String::from_utf8(empty_vec).unwrap();
+            let empty_id: u64 = 0;
             
             dvfcore_handlers.insert(
                 empty_id,
@@ -119,7 +118,7 @@ impl Node {
                 Arc::clone(&self.mempool_handler_map),
                 Arc::clone(&self.consensus_handler_map)
               ).await {
-                Ok(mut dvfcore) => {
+                Ok(dvfcore) => {
                   tokio::spawn(async move {
                     // dvfcore.analyze_block().await;
                   })

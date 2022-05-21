@@ -2,7 +2,7 @@ use crate::config::Committee;
 use bytes::Bytes;
 use crypto::{Digest, PublicKey};
 use log::{error, warn};
-use network::SimpleSender;
+use network::{SimpleSender, DvfMessage};
 use store::Store;
 use tokio::sync::mpsc::Receiver;
 
@@ -20,7 +20,7 @@ pub struct Helper {
     rx_request: Receiver<(Vec<Digest>, PublicKey)>,
     /// A network sender to send the batches to the other mempools.
     network: SimpleSender,
-    validator_id: String
+    validator_id: u64
 }
 
 impl Helper {
@@ -28,7 +28,7 @@ impl Helper {
         committee: Committee,
         store: Store,
         rx_request: Receiver<(Vec<Digest>, PublicKey)>,
-        validator_id: String
+        validator_id: u64
     ) {
         tokio::spawn(async move {
             Self {
@@ -36,7 +36,7 @@ impl Helper {
                 store,
                 rx_request,
                 network: SimpleSender::new(),
-                validator_id: validator_id.clone()
+                validator_id: validator_id
             }
             .run()
             .await;
@@ -60,11 +60,9 @@ impl Helper {
             for digest in digests {
                 match self.store.read(digest.to_vec()).await {
                     Ok(Some(data)) => {
-                        let prefix = self.validator_id.clone().into_bytes();
-                        let mut prefix_msg : Vec<u8> = Vec::new();
-                        prefix_msg.extend(prefix);
-                        prefix_msg.extend(data);
-                        self.network.send(address, Bytes::from(prefix_msg)).await
+                        let dvf_message = DvfMessage { validator_id: self.validator_id, message: data};
+                        let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                        self.network.send(address, Bytes::from(serialized_msg)).await
                     },
                     Ok(None) => (),
                     Err(e) => error!("{}", e),

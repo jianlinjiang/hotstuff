@@ -13,7 +13,7 @@ use bytes::Bytes;
 use crypto::Hash as _;
 use crypto::{PublicKey, SignatureService};
 use log::{debug, error, info, warn};
-use network::SimpleSender;
+use network::{SimpleSender, DvfMessage};
 use std::cmp::max;
 use std::collections::VecDeque;
 use store::Store;
@@ -42,7 +42,7 @@ pub struct Core {
     timer: Timer,
     aggregator: Aggregator,
     network: SimpleSender,
-    validator_id: String
+    validator_id: u64
 }
 
 impl Core {
@@ -60,7 +60,7 @@ impl Core {
         rx_loopback: Receiver<Block>,
         tx_proposer: Sender<ProposerMessage>,
         tx_commit: Sender<Block>,
-        validator_id : String
+        validator_id : u64
     ) {
         tokio::spawn(async move {
             Self {
@@ -82,7 +82,7 @@ impl Core {
                 timer: Timer::new(timeout_delay),
                 aggregator: Aggregator::new(committee),
                 network: SimpleSender::new(),
-                validator_id: validator_id.clone()
+                validator_id: validator_id
             }
             .run()
             .await
@@ -194,12 +194,10 @@ impl Core {
             .collect();
         let message = bincode::serialize(&ConsensusMessage::Timeout(timeout.clone()))
             .expect("Failed to serialize timeout message");
-        let prefix = self.validator_id.clone().into_bytes();
-        let mut prefix_msg : Vec<u8> = Vec::new();
-        prefix_msg.extend(prefix);
-        prefix_msg.extend(message);
+        let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
+        let serialized_msg = bincode::serialize(&dvf_message).unwrap();
         self.network
-            .broadcast(addresses, Bytes::from(prefix_msg))
+            .broadcast(addresses, Bytes::from(serialized_msg))
             .await;
 
         // Process our message.
@@ -260,12 +258,10 @@ impl Core {
                 .collect();
             let message = bincode::serialize(&ConsensusMessage::TC(tc.clone()))
                 .expect("Failed to serialize timeout certificate");
-            let prefix = self.validator_id.clone().into_bytes();
-            let mut prefix_msg : Vec<u8> = Vec::new();
-            prefix_msg.extend(prefix);
-            prefix_msg.extend(message);
+            let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
+            let serialized_msg = bincode::serialize(&dvf_message).unwrap();
             self.network
-                .broadcast(addresses, Bytes::from(prefix_msg))
+                .broadcast(addresses, Bytes::from(serialized_msg))
                 .await;
 
             // Make a new block if we are the next leader.
@@ -367,11 +363,9 @@ impl Core {
                     .expect("The next leader is not in the committee");
                 let message = bincode::serialize(&ConsensusMessage::Vote(vote))
                     .expect("Failed to serialize vote");
-                let prefix = self.validator_id.clone().into_bytes();
-                let mut prefix_msg : Vec<u8> = Vec::new();
-                prefix_msg.extend(prefix);
-                prefix_msg.extend(message);
-                self.network.send(address, Bytes::from(prefix_msg)).await;
+                let dvf_message = DvfMessage { validator_id: self.validator_id, message: message};
+                let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                self.network.send(address, Bytes::from(serialized_msg)).await;
             }
         }
         Ok(())

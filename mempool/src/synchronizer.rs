@@ -5,7 +5,7 @@ use crypto::{Digest, PublicKey};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 use log::{debug, error};
-use network::SimpleSender;
+use network::{SimpleSender, DvfMessage};
 use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use store::{Store, StoreError};
@@ -45,7 +45,7 @@ pub struct Synchronizer {
     /// It also keeps the round number and a timestamp (`u128`) of each request we sent.
     pending: HashMap<Digest, (Round, Sender<()>, u128)>,
     /// validator id.
-    validator_id: String
+    validator_id: u64
 }
 
 impl Synchronizer {
@@ -58,7 +58,7 @@ impl Synchronizer {
         sync_retry_delay: u64,
         sync_retry_nodes: usize,
         rx_message: Receiver<ConsensusMempoolMessage>,
-        validator_id: String
+        validator_id: u64
     ) {
         tokio::spawn(async move {
             Self {
@@ -72,7 +72,7 @@ impl Synchronizer {
                 network: SimpleSender::new(),
                 round: Round::default(),
                 pending: HashMap::new(),
-                validator_id: validator_id.clone()
+                validator_id: validator_id
             }
             .run()
             .await;
@@ -142,11 +142,10 @@ impl Synchronizer {
                         };
                         let message = MempoolMessage::BatchRequest(missing, self.name);
                         let serialized = bincode::serialize(&message).expect("Failed to serialize our own message");
-                        let prefix = self.validator_id.clone().into_bytes();
-                        let mut prefix_msg : Vec<u8> = Vec::new();
-                        prefix_msg.extend(prefix);
-                        prefix_msg.extend(serialized);
-                        self.network.send(address, Bytes::from(prefix_msg)).await;
+                        
+                        let dvf_message = DvfMessage { validator_id: self.validator_id, message: serialized};
+                        let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                        self.network.send(address, Bytes::from(serialized_msg)).await;
                     },
                     ConsensusMempoolMessage::Cleanup(round) => {
                         // Keep track of the consensus' round number.
@@ -204,12 +203,10 @@ impl Synchronizer {
                             .collect();
                         let message = MempoolMessage::BatchRequest(retry, self.name);
                         let serialized = bincode::serialize(&message).expect("Failed to serialize our own message");
-                        let prefix = self.validator_id.clone().into_bytes();
-                        let mut prefix_msg : Vec<u8> = Vec::new();
-                        prefix_msg.extend(prefix);
-                        prefix_msg.extend(serialized);
+                        let dvf_message = DvfMessage { validator_id: self.validator_id, message: serialized};
+                        let serialized_msg = bincode::serialize(&dvf_message).unwrap();
                         self.network
-                            .lucky_broadcast(addresses, Bytes::from(prefix_msg), self.sync_retry_nodes)
+                            .lucky_broadcast(addresses, Bytes::from(serialized_msg), self.sync_retry_nodes)
                             .await;
                     }
 

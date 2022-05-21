@@ -54,8 +54,8 @@ impl Consensus {
         rx_mempool: Receiver<Digest>,
         tx_mempool: Sender<ConsensusMempoolMessage>,
         tx_commit: Sender<Block>,
-        validator_id: String, 
-        consensus_handler_map: Arc<RwLock<HashMap<String, ConsensusReceiverHandler>>>,
+        validator_id: u64, 
+        consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
     ) {
         // NOTE: This log entry is used to compute performance.
         parameters.log();
@@ -72,7 +72,7 @@ impl Consensus {
         // address.set_ip("0.0.0.0".parse().unwrap());
         {
             let mut handler_map = block_on(consensus_handler_map.write());
-            handler_map.insert(validator_id.clone(), ConsensusReceiverHandler{tx_consensus, tx_helper});
+            handler_map.insert(validator_id, ConsensusReceiverHandler{tx_consensus, tx_helper});
             info!("insert into consensus handler_map");
         }
         
@@ -102,7 +102,7 @@ impl Consensus {
             store.clone(),
             tx_loopback.clone(),
             parameters.sync_retry_delay,
-            validator_id.clone()
+            validator_id
         );
 
         // Spawn the consensus core.
@@ -119,7 +119,7 @@ impl Consensus {
             rx_loopback,
             tx_proposer,
             tx_commit,
-            validator_id.clone()
+            validator_id
         );
 
         // Spawn the block proposer.
@@ -130,11 +130,11 @@ impl Consensus {
             rx_mempool,
             /* rx_message */ rx_proposer,
             tx_loopback,
-            validator_id.clone()
+            validator_id
         );
 
         // Spawn the helper module.
-        Helper::spawn(committee, store, /* rx_requests */ rx_helper, validator_id.clone());
+        Helper::spawn(committee, store, /* rx_requests */ rx_helper, validator_id);
     }
 }
 

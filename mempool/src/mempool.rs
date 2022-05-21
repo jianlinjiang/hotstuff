@@ -56,7 +56,7 @@ pub struct Mempool {
     /// Send messages to consensus.
     tx_consensus: Sender<Digest>,
     /// Validator id.
-    validator_id: String
+    validator_id: u64
 }
 
 impl Mempool {
@@ -67,9 +67,9 @@ impl Mempool {
         store: Store,
         rx_consensus: Receiver<ConsensusMempoolMessage>,
         tx_consensus: Sender<Digest>,
-        validator_id: String,
-        tx_handler_map : Arc<RwLock<HashMap<String, TxReceiverHandler>>>,
-        mempool_handler_map: Arc<RwLock<HashMap<String, MempoolReceiverHandler>>>
+        validator_id: u64,
+        tx_handler_map : Arc<RwLock<HashMap<u64, TxReceiverHandler>>>,
+        mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>
     ) {
         // NOTE: This log entry is used to compute performance.
         parameters.log();
@@ -81,7 +81,7 @@ impl Mempool {
             parameters,
             store,
             tx_consensus,
-            validator_id : validator_id.clone(),
+            validator_id
         };
 
         // Spawn all mempool tasks.
@@ -112,12 +112,12 @@ impl Mempool {
             self.parameters.sync_retry_delay,
             self.parameters.sync_retry_nodes,
             /* rx_message */ rx_consensus,
-            self.validator_id.clone()
+            self.validator_id
         );
     }
 
     /// Spawn all tasks responsible to handle clients transactions.
-    async fn handle_clients_transactions(&self, tx_handler_map: Arc<RwLock<HashMap<String, TxReceiverHandler>>>) {
+    async fn handle_clients_transactions(&self, tx_handler_map: Arc<RwLock<HashMap<u64, TxReceiverHandler>>>) {
         let (tx_batch_maker, rx_batch_maker) = channel(CHANNEL_CAPACITY);
         let (tx_quorum_waiter, rx_quorum_waiter) = channel(CHANNEL_CAPACITY);
         let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
@@ -150,7 +150,7 @@ impl Mempool {
             /* tx_message */ tx_quorum_waiter,
             /* mempool_addresses */
             self.committee.broadcast_addresses(&self.name),
-            self.validator_id.clone()
+            self.validator_id
         );
 
         // The `QuorumWaiter` waits for 2f authorities to acknowledge reception of the batch. It then forwards
@@ -173,7 +173,7 @@ impl Mempool {
     }
 
     /// Spawn all tasks responsible to handle messages from other mempools.
-    async fn handle_mempool_messages(&self, mempool_handler_map: Arc<RwLock<HashMap<String, MempoolReceiverHandler>>>) {
+    async fn handle_mempool_messages(&self, mempool_handler_map: Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>) {
         let (tx_helper, rx_helper) = channel(CHANNEL_CAPACITY);
         let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
 
@@ -204,7 +204,7 @@ impl Mempool {
             self.committee.clone(),
             self.store.clone(),
             /* rx_request */ rx_helper,
-            self.validator_id.clone()
+            self.validator_id
         );
 
         // This `Processor` hashes and stores the batches we receive from the other mempools. It then forwards the

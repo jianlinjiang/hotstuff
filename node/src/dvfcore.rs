@@ -18,10 +18,9 @@ use std::fmt;
 pub const CHANNEL_CAPACITY: usize = 1_000;
 use bls::{Hash256, Signature};
 use std::net::SocketAddr;
-use types::Keypair;
 #[derive(Serialize, Deserialize, Clone)]
 pub struct DvfInfo {
-  pub validator_id : String,
+  pub validator_id : u64,
   pub committee: Committee
 }
 
@@ -30,7 +29,7 @@ impl fmt::Debug for DvfInfo {
       write!(
           f,
           "{}: Commitee({:?})",
-          self.validator_id.clone(),
+          self.validator_id,
           serde_json::to_string_pretty(&self.committee)
       )
   }
@@ -101,7 +100,7 @@ pub struct DvfCore {
   pub store: Store,
   pub commit: Receiver<Block>,
   pub broadcast_signature_addresses : Vec<SocketAddr>,
-  pub validator_id: String
+  pub validator_id: u64
 }
 
 impl DvfCore {
@@ -109,19 +108,18 @@ impl DvfCore {
     committee: Committee,
     name: PublicKey,
     secret_key: SecretKey,
-    validator_id: String,
+    validator_id: u64,
     base_store_path: String,
-    tx_handler_map : Arc<RwLock<HashMap<String, TxReceiverHandler>>>,
-    mempool_handler_map : Arc<RwLock<HashMap<String, MempoolReceiverHandler>>>,
-    consensus_handler_map: Arc<RwLock<HashMap<String, ConsensusReceiverHandler>>>,
+    tx_handler_map : Arc<RwLock<HashMap<u64, TxReceiverHandler>>>,
+    mempool_handler_map : Arc<RwLock<HashMap<u64, MempoolReceiverHandler>>>,
+    consensus_handler_map: Arc<RwLock<HashMap<u64, ConsensusReceiverHandler>>>,
   ) -> Result<Self, ConfigError> {
     let (tx_commit, rx_commit) = channel(CHANNEL_CAPACITY);
     let (tx_consensus_to_mempool, rx_consensus_to_mempool) = channel(CHANNEL_CAPACITY);
     let (tx_mempool_to_consensus, rx_mempool_to_consensus) = channel(CHANNEL_CAPACITY);
 
     let parameters = Parameters::default();
-
-    let store_path = base_store_path + "/" + &validator_id;
+    let store_path = format!("{}/{}", base_store_path, validator_id);
     let store = Store::new(&store_path).expect("Failed to create store");
 
     // Run the signature service.
@@ -141,7 +139,7 @@ impl DvfCore {
       store.clone(),
       rx_consensus_to_mempool,
       tx_mempool_to_consensus,
-      validator_id.clone(),
+      validator_id,
       Arc::clone(&tx_handler_map),
       Arc::clone(&mempool_handler_map)
     );
@@ -155,7 +153,7 @@ impl DvfCore {
       rx_mempool_to_consensus,
       tx_consensus_to_mempool,
       tx_commit,
-      validator_id.clone(),
+      validator_id,
       Arc::clone(&consensus_handler_map)
     );
     info!("dvfcore {} successfully booted", validator_id);

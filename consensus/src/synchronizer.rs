@@ -8,7 +8,7 @@ use crypto::{Digest, PublicKey};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 use log::{debug, error};
-use network::SimpleSender;
+use network::{SimpleSender, DvfMessage};
 use std::collections::{HashMap, HashSet};
 use std::time::{SystemTime, UNIX_EPOCH};
 use store::Store;
@@ -33,7 +33,7 @@ impl Synchronizer {
         store: Store,
         tx_loopback: Sender<Block>,
         sync_retry_delay: u64,
-        validator_id: String
+        validator_id: u64
     ) -> Self {
         let mut network = SimpleSender::new();
         let (tx_inner, mut rx_inner): (_, Receiver<Block>) = channel(CHANNEL_CAPACITY);
@@ -68,10 +68,9 @@ impl Synchronizer {
                                 let message = ConsensusMessage::SyncRequest(parent, name);
                                 let message = bincode::serialize(&message)
                                     .expect("Failed to serialize sync request");
-                                let mut prefix_msg : Vec<u8> = Vec::new();
-                                prefix_msg.extend(validator_id.clone().into_bytes());
-                                prefix_msg.extend(message);
-                                network.send(address, Bytes::from(prefix_msg)).await;
+                                let dvf_message = DvfMessage { validator_id: validator_id, message: message};
+                                let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                                network.send(address, Bytes::from(serialized_msg)).await;
                             }
                         }
                     },
@@ -102,10 +101,9 @@ impl Synchronizer {
                                 let message = ConsensusMessage::SyncRequest(digest.clone(), name);
                                 let message = bincode::serialize(&message)
                                     .expect("Failed to serialize sync request");
-                                let mut prefix_msg : Vec<u8> = Vec::new();
-                                prefix_msg.extend(validator_id.clone().into_bytes());
-                                prefix_msg.extend(message);
-                                network.broadcast(addresses, Bytes::from(prefix_msg)).await;
+                                let dvf_message = DvfMessage { validator_id: validator_id, message: message};
+                                let serialized_msg = bincode::serialize(&dvf_message).unwrap();
+                                network.broadcast(addresses, Bytes::from(serialized_msg)).await;
                             }
                         }
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(TIMER_ACCURACY));

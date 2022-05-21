@@ -12,14 +12,13 @@ use tokio_util::codec::{Framed, LengthDelimitedCodec};
 use std::collections::HashMap;
 use std::sync::{Arc};
 use tokio::sync::{RwLock};
-use futures::executor::block_on;
+use crate::dvf_message::DvfMessage;
 #[cfg(test)]
 #[path = "tests/receiver_tests.rs"]
 pub mod receiver_tests;
 
 /// Convenient alias for the writer end of the TCP channel.
 pub type Writer = SplitSink<Framed<TcpStream, LengthDelimitedCodec>, Bytes>;
-pub const PREFIX_LEN: usize =  88;
 #[async_trait]
 pub trait MessageHandler: Clone + Send + Sync + 'static {
     /// Defines how to handle an incoming message. A typical usage is to define a `MessageHandler` with a
@@ -35,12 +34,12 @@ pub struct Receiver<Handler: MessageHandler> {
     /// Address to listen to.
     address: SocketAddr,
     /// Struct responsible to define how to handle received messages.
-    handler_map: Arc<RwLock<HashMap<String, Handler>>>
+    handler_map: Arc<RwLock<HashMap<u64, Handler>>>
 }
 
 impl<Handler: MessageHandler> Receiver<Handler> {
     /// Spawn a new network receiver handling connections from any incoming peer.
-    pub fn spawn(address: SocketAddr, handler_map: Arc<RwLock<HashMap<String, Handler>>>) {
+    pub fn spawn(address: SocketAddr, handler_map: Arc<RwLock<HashMap<u64, Handler>>>) {
         tokio::spawn(async move {
             Self { address, handler_map : Arc::clone(&handler_map) }.run().await;
         });
@@ -66,23 +65,22 @@ impl<Handler: MessageHandler> Receiver<Handler> {
         }
     }
 
-    async fn spawn_runner(socket: TcpStream, peer: SocketAddr, handler_map: Arc<RwLock<HashMap<String, Handler>>>) {
-        let msg_prefix_len: usize = PREFIX_LEN;
+    async fn spawn_runner(socket: TcpStream, peer: SocketAddr, handler_map: Arc<RwLock<HashMap<u64, Handler>>>) {
         tokio::spawn(async move {
             let transport = Framed::new(socket, LengthDelimitedCodec::new());
             let (mut writer, mut reader) = transport.split();
             while let Some(frame) = reader.next().await {
                 match frame.map_err(|e| NetworkError::FailedToReceiveMessage(peer, e)) {
                     Ok(message) => {
-                        // get first msg_prefix_len
-                        let prefix = String::from_utf8(message[0..msg_prefix_len].to_vec()).unwrap();
+                        // get validator
+                        let dvf_message : DvfMessage = bincode::deserialize(&message[..]).unwrap();
+                        let validator_id = dvf_message.validator_id;
                         let handlers = handler_map.read().await;
-                        match handlers.get(&prefix) {
+                        match handlers.get(&validator_id) {
                             Some(handler) => {
                                 // trunctate the prefix
-                                let mut mut_msg = message;
-                                let _ = mut_msg.split_to(msg_prefix_len);
-                                if let Err(e) = handler.dispatch(&mut writer, mut_msg.freeze()).await {
+                                let msg = dvf_message.message;
+                                if let Err(e) = handler.dispatch(&mut writer, Bytes::from(msg)).await {
                                     warn!("{}", e);
                                     return;
                                 }
